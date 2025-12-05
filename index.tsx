@@ -48,7 +48,10 @@ const translations = {
       placeholder: 'A futuristic city on Mars made of crystal...',
       btn_generate: 'Generate Art',
       btn_regenerate: 'Regenerate',
-      error: 'Failed to generate image. Please try again.',
+      errors: {
+        default: 'Failed to generate image. Please try again.',
+        safety: 'Image generation blocked by safety filters. Try a different prompt.'
+      },
       options: {
         style_label: 'Image Style',
         ratio_label: 'Aspect Ratio',
@@ -99,6 +102,10 @@ const translations = {
         phone: '+1 (555) 000-0000',
         company: 'Your Company Ltd',
         desc: 'Tell us about your needs...'
+      },
+      errors: {
+        required: 'This field is required.',
+        email_invalid: 'Please enter a valid email address.'
       }
     },
     footer: {
@@ -159,7 +166,10 @@ const translations = {
       placeholder: 'مدينة مستقبلية على المريخ مصنوعة من الكريستال...',
       btn_generate: 'توليد الفن',
       btn_regenerate: 'إعادة التوليد',
-      error: 'فشل في إنشاء الصورة. يرجى المحاولة مرة أخرى.',
+      errors: {
+        default: 'فشل في إنشاء الصورة. يرجى المحاولة مرة أخرى.',
+        safety: 'تم حظر إنشاء الصورة بسبب معايير الأمان. جرب وصفاً مختلفاً.'
+      },
       options: {
         style_label: 'نمط الصورة',
         ratio_label: 'نسبة الأبعاد',
@@ -210,6 +220,10 @@ const translations = {
         phone: '+966 55 000 0000',
         company: 'شركتك المحدودة',
         desc: 'أخبرنا عن احتياجاتك...'
+      },
+      errors: {
+        required: 'هذا الحقل مطلوب.',
+        email_invalid: 'يرجى إدخال بريد إلكتروني صحيح.'
       }
     },
     footer: {
@@ -277,6 +291,15 @@ const Icons = {
   ),
   RefreshCw: () => (
     <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+  ),
+  Maximize: () => (
+    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+  ),
+  X: ({size = 24}: {size?: number}) => (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  ),
+  AlertCircle: () => (
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
   )
 };
 
@@ -570,6 +593,7 @@ function AIArtGenerator() {
   const [imageUrl, setImageUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const styles = [
     { id: 'none', label: t.ai_art.options.styles.none, value: '' },
@@ -590,8 +614,7 @@ function AIArtGenerator() {
     if (!prompt) return;
     setLoading(true);
     setError('');
-    // Not clearing imageUrl here so the old image stays visible (dimmed) during regeneration
-
+    
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
@@ -612,9 +635,17 @@ function AIArtGenerator() {
         }
       });
 
+      const candidate = response.candidates?.[0];
+
+      if (candidate?.finishReason === 'SAFETY') {
+        setError(t.ai_art.errors.safety);
+        setLoading(false);
+        return;
+      }
+
       let foundImage = false;
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
+      if (candidate?.content?.parts) {
+        for (const part of candidate.content.parts) {
           if (part.inlineData) {
             setImageUrl(`data:image/png;base64,${part.inlineData.data}`);
             foundImage = true;
@@ -624,16 +655,18 @@ function AIArtGenerator() {
       }
       
       if (!foundImage) {
-        setError(t.ai_art.error);
+        setError(t.ai_art.errors.default);
       }
 
     } catch (e) {
       console.error(e);
-      setError(t.ai_art.error);
+      setError(t.ai_art.errors.default);
     } finally {
       setLoading(false);
     }
   };
+
+  const aspectRatioStyle = ratio.replace(':', '/');
 
   return (
     <section id="ai-art" className="section bg-light" aria-labelledby="ai-art-title">
@@ -692,33 +725,109 @@ function AIArtGenerator() {
                 </div>
             </div>
             {error && <p style={{ color: 'red', marginTop: '1rem' }}>{error}</p>}
-            {imageUrl && (
-                <div className="fade-in" style={{ marginTop: '2rem', borderRadius: '0.75rem', overflow: 'hidden', boxShadow: 'var(--shadow-lg)', background: 'white' }}>
-                    <div style={{ position: 'relative' }}>
-                        <img 
-                            src={imageUrl} 
-                            alt="Generated AI Art" 
-                            style={{ width: '100%', display: 'block', opacity: loading ? 0.6 : 1, transition: 'opacity 0.3s' }} 
-                        />
-                         {loading && (
-                            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-                                <div className="spinner" style={{ borderTopColor: 'var(--primary)', width: '40px', height: '40px', borderWidth: '4px' }}></div>
+            
+            {(imageUrl || loading) && (
+                <div className="fade-in" style={{ marginTop: '2rem', maxWidth: '100%', marginInline: 'auto', background: 'white', borderRadius: '0.75rem', overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}>
+                    <div 
+                        className={`image-preview-container ${loading ? 'loading' : ''}`}
+                        style={{ 
+                            position: 'relative', 
+                            aspectRatio: aspectRatioStyle,
+                            backgroundColor: 'var(--gray-100)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '100%'
+                        }}
+                        onClick={() => imageUrl && !loading && setLightboxOpen(true)}
+                    >
+                        {imageUrl && (
+                            <img 
+                                src={imageUrl} 
+                                alt="Generated AI Art" 
+                                style={{ 
+                                    width: '100%', 
+                                    height: '100%', 
+                                    objectFit: 'cover', 
+                                    opacity: loading ? 0.5 : 1, 
+                                    transition: 'opacity 0.3s' 
+                                }} 
+                            />
+                        )}
+                        
+                        {loading && (
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                                <div className="spinner" style={{ borderTopColor: 'var(--primary)', width: '50px', height: '50px', borderWidth: '4px' }}></div>
                             </div>
-                         )}
+                        )}
+
+                        {imageUrl && !loading && (
+                            <div className="zoom-hint" style={{
+                                position: 'absolute',
+                                bottom: '1rem',
+                                right: '1rem',
+                                background: 'rgba(0,0,0,0.6)',
+                                color: 'white',
+                                padding: '0.5rem',
+                                borderRadius: '0.5rem',
+                                backdropFilter: 'blur(4px)',
+                                opacity: 0,
+                                transition: 'opacity 0.2s',
+                                pointerEvents: 'none'
+                            }}>
+                               <Icons.Maximize />
+                            </div>
+                        )}
                     </div>
-                    <div style={{ padding: '1rem', borderTop: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'center' }}>
-                       <button 
-                         className="btn btn-outline" 
-                         onClick={handleGenerate}
-                         disabled={loading}
-                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                       >
-                         <Icons.RefreshCw /> {t.ai_art.btn_regenerate}
-                       </button>
-                    </div>
+                    {imageUrl && (
+                        <div style={{ padding: '1rem', borderTop: '1px solid var(--gray-200)', display: 'flex', justifyContent: 'center' }}>
+                           <button 
+                             className="btn btn-outline" 
+                             onClick={(e) => { e.stopPropagation(); handleGenerate(); }}
+                             disabled={loading}
+                             style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                           >
+                             <Icons.RefreshCw /> {t.ai_art.btn_regenerate}
+                           </button>
+                        </div>
+                    )}
                 </div>
             )}
          </div>
+         {lightboxOpen && imageUrl && (
+            <div 
+                className="lightbox-fade"
+                style={{ 
+                    position: 'fixed', inset: 0, zIndex: 9999, 
+                    background: 'rgba(0,0,0,0.95)', 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '2rem',
+                    cursor: 'zoom-out'
+                }}
+                onClick={() => setLightboxOpen(false)}
+            >
+                <button 
+                    onClick={() => setLightboxOpen(false)}
+                    style={{ 
+                        position: 'absolute', top: '1rem', right: '1rem', 
+                        background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', 
+                        width: '48px', height: '48px', borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', transition: 'background 0.2s'
+                    }}
+                    className="lightbox-close"
+                    aria-label="Close"
+                >
+                    <Icons.X />
+                </button>
+                <img 
+                    src={imageUrl} 
+                    alt="Full size"
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', boxShadow: '0 0 40px rgba(0,0,0,0.5)' }}
+                    onClick={(e) => e.stopPropagation()} 
+                />
+            </div>
+        )}
       </div>
     </section>
   );
@@ -776,21 +885,61 @@ function Contact() {
   const [formState, setFormState] = useState({
     name: '', email: '', phone: '', company: '', description: ''
   });
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Validation Logic
+  const requiredFields = ['name', 'email', 'description'];
+  const validate = (name: string, value: string) => {
+    if (!requiredFields.includes(name)) return '';
+    if (name === 'name' || name === 'description') {
+      if (!value.trim()) return t.contact.errors.required;
+    }
+    if (name === 'email') {
+      if (!value.trim()) return t.contact.errors.required;
+      // Basic email regex
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return t.contact.errors.email_invalid;
+    }
+    return '';
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    const errors: string[] = [];
+    const newTouched: Record<string, boolean> = {};
+    requiredFields.forEach(field => {
+       newTouched[field] = true;
+       if (validate(field, formState[field as keyof typeof formState])) {
+          errors.push(field);
+       }
+    });
+    setTouched(prev => ({...prev, ...newTouched}));
+
+    if (errors.length > 0) return;
+
     setIsSubmitting(true);
     // Simulate network delay for visual feedback
     setTimeout(() => {
       setSubmitted(true);
       setIsSubmitting(false);
+      setFormState({ name: '', email: '', phone: '', company: '', description: '' });
+      setTouched({});
     }, 1500);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormState({ ...formState, [e.target.name]: e.target.value });
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setTouched(prev => ({...prev, [e.target.name]: true}));
+  };
+
+  const getFieldError = (name: string) => {
+    if (!touched[name]) return '';
+    return validate(name, formState[name as keyof typeof formState]);
   };
 
   return (
@@ -813,15 +962,47 @@ function Contact() {
             <button className="btn btn-outline" style={{ marginTop: '2rem' }} onClick={() => setSubmitted(false)}>{t.contact.btn_again}</button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="card">
+          <form onSubmit={handleSubmit} className="card" noValidate>
             <div className="grid grid-2" style={{ marginBottom: '1.5rem' }}>
               <div>
                 <label htmlFor="name">{t.contact.labels.name}</label>
-                <input id="name" required name="name" className="input-field" type="text" placeholder={t.contact.placeholders.name} value={formState.name} onChange={handleChange} aria-required="true" />
+                <input 
+                    id="name" 
+                    name="name" 
+                    className={`input-field ${getFieldError('name') ? 'error' : ''}`} 
+                    type="text" 
+                    placeholder={t.contact.placeholders.name} 
+                    value={formState.name} 
+                    onChange={handleChange} 
+                    onBlur={handleBlur}
+                    aria-invalid={!!getFieldError('name')}
+                    aria-describedby={getFieldError('name') ? "name-error" : undefined}
+                />
+                {getFieldError('name') && (
+                    <span id="name-error" className="error-msg">
+                        <Icons.AlertCircle /> {getFieldError('name')}
+                    </span>
+                )}
               </div>
               <div>
                 <label htmlFor="email">{t.contact.labels.email}</label>
-                <input id="email" required name="email" className="input-field" type="email" placeholder={t.contact.placeholders.email} value={formState.email} onChange={handleChange} aria-required="true" />
+                <input 
+                    id="email" 
+                    name="email" 
+                    className={`input-field ${getFieldError('email') ? 'error' : ''}`} 
+                    type="email" 
+                    placeholder={t.contact.placeholders.email} 
+                    value={formState.email} 
+                    onChange={handleChange} 
+                    onBlur={handleBlur}
+                    aria-invalid={!!getFieldError('email')}
+                    aria-describedby={getFieldError('email') ? "email-error" : undefined}
+                />
+                {getFieldError('email') && (
+                    <span id="email-error" className="error-msg">
+                        <Icons.AlertCircle /> {getFieldError('email')}
+                    </span>
+                )}
               </div>
             </div>
             <div className="grid grid-2" style={{ marginBottom: '1.5rem' }}>
@@ -836,7 +1017,23 @@ function Contact() {
             </div>
             <div style={{ marginBottom: '2rem' }}>
               <label htmlFor="description">{t.contact.labels.desc}</label>
-              <textarea id="description" required name="description" className="input-field" rows={4} placeholder={t.contact.placeholders.desc} value={formState.description} onChange={handleChange} aria-required="true"></textarea>
+              <textarea 
+                id="description" 
+                name="description" 
+                className={`input-field ${getFieldError('description') ? 'error' : ''}`} 
+                rows={4} 
+                placeholder={t.contact.placeholders.desc} 
+                value={formState.description} 
+                onChange={handleChange} 
+                onBlur={handleBlur}
+                aria-invalid={!!getFieldError('description')}
+                aria-describedby={getFieldError('description') ? "desc-error" : undefined}
+              ></textarea>
+              {getFieldError('description') && (
+                    <span id="desc-error" className="error-msg">
+                        <Icons.AlertCircle /> {getFieldError('description')}
+                    </span>
+                )}
             </div>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting} style={{ width: '100%', fontSize: '1.125rem', minHeight: '3.5rem' }}>
               {isSubmitting ? (
